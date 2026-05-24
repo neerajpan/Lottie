@@ -776,7 +776,69 @@ Godot picks the right `.dll` / `.so` / `.framework` / `.wasm` per the
 
 ---
 
-## 10. Follow-up improvements to this repo (not done yet)
+## 10. Building via GitHub Actions (no local toolchain needed)
+
+The repo ships a manual CI workflow at `.github/workflows/build.yml` that
+builds binaries on GitHub's hosted runners — Linux, macOS, iOS, Android,
+Windows — with **no** local toolchain required. You pick which platform(s)
+to build via checkboxes; jobs you don't tick don't run.
+
+### How to trigger it
+
+1. Open https://github.com/&lt;your-fork&gt;/Lottie → **Actions** tab.
+2. In the left sidebar pick **Build extension binaries**.
+3. Click **Run workflow** (top-right of the runs list).
+4. Tick the platform checkboxes you want:
+   - `Windows x86_64 (.dll)`
+   - `Linux x86_64 (.so)`
+   - `macOS (.framework, host arch only)`
+   - `iOS device + simulator (.xcframework)`
+   - `Android arm64-v8a (.so)`
+   - `Android x86_64 (.so)`
+5. Pick **Build targets** — `both`, `debug_only`, or `release_only`.
+6. Optional: tick **Auto-commit built binaries back to bin/** if you want
+   the resulting artifacts pushed back into `main`. Leave it unchecked to
+   just upload artifacts you can download manually from the run page.
+7. Click **Run workflow**.
+
+Each ticked platform spawns an independent job, all running in parallel.
+Build time is roughly the slowest one (~10–20 minutes), not the sum.
+
+### Where the binaries end up
+
+- **Always**: as job artifacts on the workflow run page. Download manually
+  → unzip → drop into your project's `addons/godot_lottie/bin/`.
+- **If `Auto-commit ...` was ticked**: a follow-up `commit` job downloads
+  all artifacts, drops them into `demo/addons/godot_lottie/bin/`, and
+  pushes a commit with a message like:
+  ```
+  ci: rebuild binaries via workflow_dispatch (linux_x86_64 ios)
+  ```
+
+### What the workflow handles per platform
+
+| Platform | Runner | What it does |
+|---|---|---|
+| Windows x86_64 | `windows-latest` | Sets up MSVC via `ilammy/msvc-dev-cmd`, runs `build_thorvg.bat` (static), then SCons |
+| Linux x86_64 | `ubuntu-latest` | Installs `build-essential`/`meson`/`ninja`/`scons` via apt+pip, runs `./build_thorvg.sh`, then SCons |
+| macOS | `macos-latest` (Apple Silicon) | `brew install meson ninja scons`, runs `./build_thorvg.sh`, then SCons for host arch (arm64) |
+| iOS | `macos-latest` | Same brew installs, runs `./build_thorvg_ios.sh` then `./build_extension_ios.sh` to produce `.xcframework` per target |
+| Android | `ubuntu-latest` + `nttld/setup-ndk@v1` (NDK r26d) | Cross-compiles ThorVG + extension for each ticked ABI |
+
+### Limitations / known gaps
+
+- **macOS** job builds only for the runner's arch (currently arm64, since
+  `macos-latest` is Apple Silicon). For Universal macOS frameworks (arm64
+  + x86_64), you still need to follow §3 manually for now.
+- **iOS** code signing is intentionally NOT done in CI — the produced
+  `.xcframework` is unsigned. Godot's iOS exporter generates an Xcode
+  project that gets signed at the user's `xcodebuild` step.
+- **Web (WASM)** is not in the workflow yet — `build_thorvg_wasm.sh` is
+  still in the follow-up list.
+
+---
+
+## 11. Follow-up improvements to this repo (not done yet)
 
 These would make multi-platform builds smoother:
 

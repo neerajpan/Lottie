@@ -1,0 +1,283 @@
+name: Build extension binaries
+
+# Manual-only trigger -- pick which platforms to build via the checkboxes
+# on the "Run workflow" panel. Each platform is an independent job, so
+# unchecked platforms don't burn any CI minutes.
+on:
+  workflow_dispatch:
+    inputs:
+      windows_x86_64:
+        description: 'Windows x86_64 (.dll)'
+        type: boolean
+        default: false
+      linux_x86_64:
+        description: 'Linux x86_64 (.so)'
+        type: boolean
+        default: false
+      macos:
+        description: 'macOS (.framework, host arch only -- arm64 on macos-latest)'
+        type: boolean
+        default: false
+      ios:
+        description: 'iOS device + simulator (.xcframework)'
+        type: boolean
+        default: false
+      android_arm64:
+        description: 'Android arm64-v8a (.so)'
+        type: boolean
+        default: false
+      android_x86_64:
+        description: 'Android x86_64 (.so)'
+        type: boolean
+        default: false
+      targets:
+        description: 'Build targets'
+        type: choice
+        options:
+          - both
+          - debug_only
+          - release_only
+        default: both
+      commit_artifacts:
+        description: 'Auto-commit built binaries back to bin/ on main (requires no protection on main)'
+        type: boolean
+        default: false
+
+jobs:
+
+  # ----------------------------------------------------------------------
+  windows:
+    if: ${{ inputs.windows_x86_64 }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Python build tools
+        run: pip install meson ninja scons
+
+      - name: Build ThorVG (static, /MT CRT)
+        shell: cmd
+        run: call build_thorvg.bat
+
+      - name: Build extension
+        shell: bash
+        run: |
+          if [ "${{ inputs.targets }}" != "release_only" ]; then
+            python -m SCons platform=windows target=template_debug arch=x86_64 -j2
+          fi
+          if [ "${{ inputs.targets }}" != "debug_only" ]; then
+            python -m SCons platform=windows target=template_release arch=x86_64 -j2
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: |
+            demo/addons/godot_lottie/bin/libgodot_lottie.windows.template_*.x86_64.dll
+            demo/addons/godot_lottie/bin/libgodot_lottie.windows.template_*.x86_64.lib
+
+  # ----------------------------------------------------------------------
+  linux:
+    if: ${{ inputs.linux_x86_64 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config python3 python3-pip
+          pip3 install --user meson ninja scons
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build ThorVG (static)
+        run: |
+          chmod +x build_thorvg.sh
+          ./build_thorvg.sh
+
+      - name: Build extension
+        run: |
+          if [ "${{ inputs.targets }}" != "release_only" ]; then
+            python3 -m SCons platform=linux target=template_debug arch=x86_64 -j$(nproc)
+          fi
+          if [ "${{ inputs.targets }}" != "debug_only" ]; then
+            python3 -m SCons platform=linux target=template_release arch=x86_64 -j$(nproc)
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: demo/addons/godot_lottie/bin/libgodot_lottie.linux.template_*.x86_64.so
+
+  # ----------------------------------------------------------------------
+  macos:
+    if: ${{ inputs.macos }}
+    runs-on: macos-latest      # Apple Silicon (arm64) since 2024
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build deps
+        run: brew install meson ninja scons
+
+      - name: Build ThorVG (static, host arch)
+        run: |
+          chmod +x build_thorvg.sh
+          ./build_thorvg.sh
+
+      - name: Build extension (host arch only -- not Universal)
+        # NOTE: this builds for the runner's arch (arm64). For Universal
+        # macOS support, both arm64 and x86_64 ThorVG slices need to be
+        # built and lipo'd; see BUILDING.md §3 for the manual recipe.
+        run: |
+          HOST_ARCH=$(uname -m)
+          if [ "$HOST_ARCH" = "arm64" ]; then SCONS_ARCH=arm64; else SCONS_ARCH=x86_64; fi
+          if [ "${{ inputs.targets }}" != "release_only" ]; then
+            scons platform=macos target=template_debug arch=$SCONS_ARCH -j$(sysctl -n hw.ncpu)
+          fi
+          if [ "${{ inputs.targets }}" != "debug_only" ]; then
+            scons platform=macos target=template_release arch=$SCONS_ARCH -j$(sysctl -n hw.ncpu)
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: demo/addons/godot_lottie/bin/libgodot_lottie.macos.template_*.framework/
+
+  # ----------------------------------------------------------------------
+  ios:
+    if: ${{ inputs.ios }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build deps
+        run: brew install meson ninja scons
+
+      - name: Build ThorVG for iOS (device + sim arm64 + sim x86_64)
+        run: |
+          chmod +x build_thorvg_ios.sh
+          ./build_thorvg_ios.sh
+
+      - name: Build extension xcframework(s)
+        env:
+          TARGETS: >-
+            ${{ inputs.targets == 'debug_only' && 'template_debug' ||
+                inputs.targets == 'release_only' && 'template_release' ||
+                'template_debug template_release' }}
+        run: |
+          chmod +x build_extension_ios.sh
+          ./build_extension_ios.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: demo/addons/godot_lottie/bin/libgodot_lottie.ios.template_*.xcframework/
+
+  # ----------------------------------------------------------------------
+  android:
+    if: ${{ inputs.android_arm64 || inputs.android_x86_64 }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config python3 python3-pip
+          pip3 install --user meson ninja scons
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build ThorVG for selected ABIs
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          ABIS=""
+          if [ "${{ inputs.android_arm64 }}" = "true" ]; then ABIS="$ABIS arm64"; fi
+          if [ "${{ inputs.android_x86_64 }}" = "true" ]; then ABIS="$ABIS x86_64"; fi
+          chmod +x build_thorvg_android.sh
+          ABIS="$ABIS" ./build_thorvg_android.sh
+
+      - name: Build extension for selected ABIs x targets
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          TARGETS=""
+          if [ "${{ inputs.targets }}" != "release_only" ]; then TARGETS="$TARGETS template_debug"; fi
+          if [ "${{ inputs.targets }}" != "debug_only" ]; then TARGETS="$TARGETS template_release"; fi
+          ARCHES=""
+          if [ "${{ inputs.android_arm64 }}" = "true" ]; then ARCHES="$ARCHES arm64"; fi
+          if [ "${{ inputs.android_x86_64 }}" = "true" ]; then ARCHES="$ARCHES x86_64"; fi
+          for tgt in $TARGETS; do
+            for arch in $ARCHES; do
+              echo "::group::SCons android $tgt $arch"
+              python3 -m SCons platform=android target=$tgt arch=$arch -j$(nproc)
+              echo "::endgroup::"
+            done
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: demo/addons/godot_lottie/bin/libgodot_lottie.android.template_*.so
+
+  # ----------------------------------------------------------------------
+  # Optional: auto-commit the freshly built artifacts back to main.
+  # Only runs if `commit_artifacts` was ticked. Skips if no artifacts exist.
+  commit:
+    needs: [windows, linux, macos, ios, android]
+    if: ${{ always() && inputs.commit_artifacts && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history + a write token for the push back.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: demo/addons/godot_lottie/bin/
+          merge-multiple: true
+
+      - name: Commit and push (if anything changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add demo/addons/godot_lottie/bin/
+          if git diff --staged --quiet; then
+            echo "No artifact changes to commit."
+          else
+            BUILT=""
+            for flag in windows_x86_64 linux_x86_64 macos ios android_arm64 android_x86_64; do
+              if [ "$(echo '${{ toJSON(inputs) }}' | python3 -c 'import json,sys; print(json.load(sys.stdin).get("'"$flag"'"))')" = "True" ]; then
+                BUILT="$BUILT $flag"
+              fi
+            done
+            git commit -m "ci: rebuild binaries via workflow_dispatch (${BUILT## })
+
+            targets: ${{ inputs.targets }}
+            triggered by: ${{ github.actor }}
+            run url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            git push
+          fi
