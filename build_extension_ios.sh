@@ -39,6 +39,24 @@ INTERMEDIATES="$BIN_DIR/ios_intermediates"
 
 mkdir -p "$INTERMEDIATES"
 
+# Resolve SCons invocation. `brew install scons` on macOS provides a
+# standalone `scons` binary but NOT a Python `SCons` module, so
+# `python3 -m SCons` fails there. Conversely, `pip install --user scons`
+# on Linux makes both available. Prefer the `scons` script when present.
+if command -v scons >/dev/null 2>&1; then
+    SCONS="scons"
+elif python3 -m SCons --version >/dev/null 2>&1; then
+    SCONS="python3 -m SCons"
+elif python -m SCons --version >/dev/null 2>&1; then
+    SCONS="python -m SCons"
+else
+    echo "ERROR: SCons not found. Install with:"
+    echo "  brew install scons              (macOS)"
+    echo "  pip3 install --user scons       (anywhere)"
+    exit 1
+fi
+echo "Using SCons: $SCONS"
+
 # ---- Verify ThorVG iOS builds exist --------------------------------------
 
 require_thorvg() {
@@ -85,12 +103,14 @@ build_variant() {
     echo "=== SCons: ios $TARGET $VARIANT (arch=$ARCH $SIM_FLAG) ==="
 
     cd "$SCRIPT_DIR"
-    python3 -m SCons platform=ios "target=$TARGET" "arch=$ARCH" "$SIM_FLAG" \
+    $SCONS platform=ios "target=$TARGET" "arch=$ARCH" "$SIM_FLAG" \
         -j"$(sysctl -n hw.ncpu)"
 
     # godot-cpp writes the .dylib to bin/ using its own suffix scheme. Locate
     # it and move into our intermediates dir for the xcframework step.
     # The exact filename godot-cpp emits depends on the version, so glob it.
+    echo "bin/ contents after SCons:"
+    ls -la "$BIN_DIR" 2>&1 | head -20
     local PRODUCED
     PRODUCED="$(ls "$BIN_DIR"/libgodot_lottie.ios.${TARGET}*.dylib 2>/dev/null | head -1)"
     if [ -z "$PRODUCED" ] || [ ! -f "$PRODUCED" ]; then
