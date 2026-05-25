@@ -11,6 +11,13 @@ import shutil
 
 env = SConscript("thirdparty/godot-cpp/SConstruct")
 
+# Linux: enable OpenMP for ThorVG's threading support
+# ThorVG is built with -Dthreads=true which uses OpenMP for parallel rendering
+# Add here (after godot-cpp import) to avoid affecting godot-cpp's build
+if env["platform"] == "linux":
+    env.Append(CCFLAGS=["-fopenmp"])
+    env.Append(LINKFLAGS=["-fopenmp"])
+
 # Source files
 env.Append(CPPPATH=["src/"])
 sources = Glob("src/*.cpp")
@@ -31,10 +38,6 @@ env.Append(CPPDEFINES=["TVG_STATIC"])
 if env["platform"] == "android":
     env.Append(LINKFLAGS=["-static-libstdc++"])
 
-# Linux: link OpenMP (libgomp) for ThorVG's threading support
-# ThorVG is built with -Dthreads=true which uses OpenMP internally
-if env["platform"] == "linux":
-    env.Append(LIBS=["gomp", "pthread"])
 
 # Determine ThorVG library location and linking method.
 #

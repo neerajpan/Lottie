@@ -64,13 +64,13 @@ echo
 echo "Configuring ThorVG build with optimizations..."
 
 # Detect platform and set threads configuration
-# ARM Mac requires threads=false for compatibility
+# ARM Mac requires threads=false for compatibility; other platforms benefit from threading
 if [ "$(uname)" == "Darwin" ] && [ "$(uname -m)" == "arm64" ]; then
     THREADS_OPTION="-Dthreads=false"
     echo "ARM Mac detected: Setting threads=false"
 else
     THREADS_OPTION="-Dthreads=true"
-    echo "Non-ARM platform: Setting threads=true"
+    echo "Non-ARM platform: Setting threads=true (OpenMP enabled)"
 fi
 
 meson setup builddir \
