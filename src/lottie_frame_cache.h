@@ -6,6 +6,8 @@
 #include <godot_cpp/variant/string.hpp>
 #include <unordered_map>
 #include <list>
+#include <string>
+#include <functional>
 
 namespace godot {
 

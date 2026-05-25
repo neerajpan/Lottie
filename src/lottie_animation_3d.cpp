@@ -9,6 +9,7 @@
 #include <thorvg.h>
 
 #include <cmath>
+#include <cstring>
 #include <thread>
 
 using namespace godot;
