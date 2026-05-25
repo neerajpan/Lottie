@@ -83,7 +83,7 @@ jobs:
             demo/addons/godot_lottie/bin/libgodot_lottie.windows.template_*.x86_64.lib
 
   # ----------------------------------------------------------------------
-  linux:
+  linux-latest:
     if: ${{ inputs.linux_x86_64 }}
     runs-on: ubuntu-latest
     steps:
@@ -114,7 +114,42 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-x86_64
+          name: linux-x86_64-latest
+          path: demo/addons/godot_lottie/bin/libgodot_lottie.linux.template_*.x86_64.so
+
+  # Linux build for older systems (Ubuntu 20.04 = GLIBC 2.31)
+  linux-compat:
+    if: ${{ inputs.linux_x86_64 }}
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config python3 python3-pip
+          pip3 install --user meson ninja scons
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build ThorVG (static)
+        run: |
+          chmod +x build_thorvg.sh
+          ./build_thorvg.sh
+
+      - name: Build extension
+        run: |
+          if [ "${{ inputs.targets }}" != "release_only" ]; then
+            python3 -m SCons platform=linux target=template_debug arch=x86_64 -j$(nproc)
+          fi
+          if [ "${{ inputs.targets }}" != "debug_only" ]; then
+            python3 -m SCons platform=linux target=template_release arch=x86_64 -j$(nproc)
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-compat
           path: demo/addons/godot_lottie/bin/libgodot_lottie.linux.template_*.x86_64.so
 
   # ----------------------------------------------------------------------
@@ -243,7 +278,7 @@ jobs:
   # Optional: auto-commit the freshly built artifacts back to main.
   # Only runs if `commit_artifacts` was ticked. Skips if no artifacts exist.
   commit:
-    needs: [windows, linux, macos, ios, android]
+    needs: [windows, linux-latest, linux-compat, macos, ios, android]
     if: ${{ always() && inputs.commit_artifacts && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
