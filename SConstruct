@@ -31,9 +31,10 @@ env.Append(CPPDEFINES=["TVG_STATIC"])
 if env["platform"] == "android":
     env.Append(LINKFLAGS=["-static-libstdc++"])
 
-# Linux: link pthread for ThorVG's threading support (when built with -Dthreads=true)
+# Linux: link OpenMP (libgomp) for ThorVG's threading support
+# ThorVG is built with -Dthreads=true which uses OpenMP internally
 if env["platform"] == "linux":
-    env.Append(LIBS=["pthread"])
+    env.Append(LIBS=["gomp", "pthread"])
 
 # Determine ThorVG library location and linking method.
 #
