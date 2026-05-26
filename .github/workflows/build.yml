@@ -307,10 +307,10 @@ jobs:
       - name: Build extension (WASM)
         run: |
           if [ "${{ inputs.targets }}" != "release_only" ]; then
-            python3 -m SCons platform=web target=template_debug arch=wasm32 -j$(nproc)
+            python3 -m SCons platform=web target=template_debug arch=wasm32 threads=no -j$(nproc)
           fi
           if [ "${{ inputs.targets }}" != "debug_only" ]; then
-            python3 -m SCons platform=web target=template_release arch=wasm32 -j$(nproc)
+            python3 -m SCons platform=web target=template_release arch=wasm32 threads=no -j$(nproc)
           fi
 
       - uses: actions/upload-artifact@v4
