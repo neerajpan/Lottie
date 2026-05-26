@@ -30,6 +30,10 @@ on:
         description: 'Android x86_64 (.so)'
         type: boolean
         default: false
+      web:
+        description: 'Web/WASM (.wasm, nothreads)'
+        type: boolean
+        default: false
       targets:
         description: 'Build targets'
         type: choice
@@ -275,10 +279,50 @@ jobs:
           path: demo/addons/godot_lottie/bin/libgodot_lottie.android.template_*.so
 
   # ----------------------------------------------------------------------
+  web:
+    if: ${{ inputs.web }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config python3 python3-pip
+          pip3 install --user meson ninja scons
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+
+      - name: Build ThorVG (WASM)
+        run: |
+          chmod +x build_thorvg_web.sh
+          ./build_thorvg_web.sh
+
+      - name: Build extension (WASM)
+        run: |
+          if [ "${{ inputs.targets }}" != "release_only" ]; then
+            python3 -m SCons platform=web target=template_debug arch=wasm32 -j$(nproc)
+          fi
+          if [ "${{ inputs.targets }}" != "debug_only" ]; then
+            python3 -m SCons platform=web target=template_release arch=wasm32 -j$(nproc)
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: demo/addons/godot_lottie/bin/libgodot_lottie.web.template_*.wasm32.nothreads.wasm
+
+  # ----------------------------------------------------------------------
   # Optional: auto-commit the freshly built artifacts back to main.
   # Only runs if `commit_artifacts` was ticked. Skips if no artifacts exist.
   commit:
-    needs: [windows, linux-latest, linux-compat, macos, ios, android]
+    needs: [windows, linux-latest, linux-compat, macos, ios, android, web]
     if: ${{ always() && inputs.commit_artifacts && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
