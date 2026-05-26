@@ -31,12 +31,13 @@ env.Append(CPPPATH=["thirdparty/thorvg/inc"])
 # which is what those builds already use.
 env.Append(CPPDEFINES=["TVG_STATIC"])
 
-# Android: statically link libc++ into the extension so the .so does not
-# require libc++_shared.so to be present alongside it at runtime. Otherwise
-# the dynamic linker fails with `cannot locate symbol _ZNSt6__ndk1...` when
-# Godot dlopen()s the extension on a device.
+# Android: statically link libc++ and OpenMP into the extension so the .so
+# does not require libc++_shared.so or libomp.so at runtime.
+# ThorVG is built with -Dthreads=true (OpenMP) on Android for parallel
+# rendering. -static-openmp bakes libomp into the .so so dlopen() never
+# fails with "cannot locate symbol omp_set_num_threads".
 if env["platform"] == "android":
-    env.Append(LINKFLAGS=["-static-libstdc++"])
+    env.Append(LINKFLAGS=["-static-libstdc++", "-fopenmp", "-static-openmp"])
 
 
 # Determine ThorVG library location and linking method.

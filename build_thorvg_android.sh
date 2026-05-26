@@ -126,16 +126,16 @@ cpu = '$CPU_FAMILY'
 endian = 'little'
 EOF
 
-    # NOTE: -Dthreads=false on Android. ThorVG's threaded task scheduler
-    # interacts badly with the Android pthread runtime in some versions and
-    # causes hangs / crashes when the extension is loaded inside a Godot
-    # Android app. Without threads ThorVG renders single-threaded but stably.
+    # -Dthreads=true: enable ThorVG's task scheduler (uses OpenMP internally).
+    # OpenMP is statically linked into the extension via -static-openmp in
+    # SConstruct, so no libomp.so needs to be bundled at runtime.
+    # Android NDK r21+ ships Clang with OpenMP support out of the box.
     (cd "$THORVG_DIR" && \
         $MESON setup "$BUILDDIR_NAME" \
             --cross-file "$CROSSFILE" \
             -Dbuildtype=release -Doptimization=3 -Db_ndebug=true \
             -Ddefault_library=static \
-            -Dsimd=true -Dthreads=false -Dpartial=true \
+            -Dsimd=true -Dthreads=true -Dpartial=true \
             -Dengines=sw -Dloaders=lottie -Dbindings=capi \
             -Dexamples=false -Dtests=false \
             --backend=ninja && \
