@@ -104,6 +104,7 @@ build_variant() {
 
     cd "$SCRIPT_DIR"
     $SCONS platform=ios "target=$TARGET" "arch=$ARCH" "$SIM_FLAG" \
+        dlink_enabled=no \
         -j"$(sysctl -n hw.ncpu)"
 
     # godot-cpp writes the .dylib to bin/ using its own suffix scheme. Locate
