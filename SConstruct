@@ -18,6 +18,11 @@ if env["platform"] == "linux":
     env.Append(CCFLAGS=["-fopenmp"])
     env.Append(LINKFLAGS=["-fopenmp"])
 
+# iOS: set @rpath-based install name so dyld can find the .dylib at runtime
+# Without this, the .dylib bakes in the build-time path which doesn't exist on device
+if env["platform"] == "ios":
+    env.Append(LINKFLAGS=["-Wl,-install_name,@rpath/libgodot_lottie.dylib"])
+
 # Source files
 env.Append(CPPPATH=["src/"])
 sources = Glob("src/*.cpp")
@@ -31,13 +36,10 @@ env.Append(CPPPATH=["thirdparty/thorvg/inc"])
 # which is what those builds already use.
 env.Append(CPPDEFINES=["TVG_STATIC"])
 
-# Android: statically link libc++ and OpenMP into the extension so the .so
-# does not require libc++_shared.so or libomp.so at runtime.
-# ThorVG is built with -Dthreads=true (OpenMP) on Android for parallel
-# rendering. -static-openmp bakes libomp into the .so so dlopen() never
-# fails with "cannot locate symbol omp_set_num_threads".
+# Android: statically link libc++ into the extension so the .so does not
+# require libc++_shared.so to be present alongside it at runtime.
 if env["platform"] == "android":
-    env.Append(LINKFLAGS=["-static-libstdc++", "-fopenmp", "-static-openmp"])
+    env.Append(LINKFLAGS=["-static-libstdc++"])
 
 
 # Determine ThorVG library location and linking method.
