@@ -18,14 +18,6 @@ if env["platform"] == "linux":
     env.Append(CCFLAGS=["-fopenmp"])
     env.Append(LINKFLAGS=["-fopenmp"])
 
-# iOS: set @rpath-based install name so dyld can find the .dylib at runtime.
-# The name must match the actual filename inside the xcframework slice, which
-# uses godot-cpp's full suffix (e.g. libgodot_lottie.ios.template_release.arm64.dylib).
-# build_extension_ios.sh also runs install_name_tool after rename/lipo for the
-# simulator slices which get renamed to a different filename.
-if env["platform"] == "ios":
-    dylib_name = "libgodot_lottie{}{}".format(env["suffix"], env["SHLIBSUFFIX"])
-    env.Append(LINKFLAGS=["-Wl,-install_name,@rpath/{}".format(dylib_name)])
 
 # Source files
 env.Append(CPPPATH=["src/"])
@@ -122,6 +114,15 @@ if env["platform"] == "macos":
         "demo/addons/godot_lottie/bin/libgodot_lottie.{}.{}.framework/libgodot_lottie.{}.{}".format(
             env["platform"], env["target"], env["platform"], env["target"]
         ),
+        source=sources,
+    )
+elif env["platform"] == "ios":
+    # Build as a static library so the entry point symbol ends up in the app
+    # binary. Godot's iOS dlopen fallback (RTLD_SELF) then finds it at runtime
+    # without needing a working dlopen path for the xcframework.
+    # build_extension_ios.sh merges this .a with ThorVG's .a via libtool.
+    library = env.StaticLibrary(
+        "demo/addons/godot_lottie/bin/libgodot_lottie{}.a".format(env["suffix"]),
         source=sources,
     )
 else:

@@ -83,19 +83,22 @@ build_variant() {
     local TARGET="$1"  # template_debug / template_release
     local VARIANT="$2" # device / sim-arm64 / sim-x86_64
 
-    local ARCH SIM_FLAG OUT_NAME
+    local ARCH SIM_FLAG OUT_NAME THORVG_BUILDDIR
     case "$VARIANT" in
         device)
             ARCH="arm64"; SIM_FLAG="ios_simulator=no"
-            OUT_NAME="libgodot_lottie.ios.$TARGET.arm64.dylib"
+            OUT_NAME="libgodot_lottie.ios.$TARGET.arm64.a"
+            THORVG_BUILDDIR="$SCRIPT_DIR/thirdparty/thorvg/builddir_ios-arm64"
             ;;
         sim-arm64)
             ARCH="arm64"; SIM_FLAG="ios_simulator=yes"
-            OUT_NAME="libgodot_lottie.ios.$TARGET.arm64.simulator.dylib"
+            OUT_NAME="libgodot_lottie.ios.$TARGET.arm64.simulator.a"
+            THORVG_BUILDDIR="$SCRIPT_DIR/thirdparty/thorvg/builddir_ios-arm64-simulator"
             ;;
         sim-x86_64)
             ARCH="x86_64"; SIM_FLAG="ios_simulator=yes"
-            OUT_NAME="libgodot_lottie.ios.$TARGET.x86_64.simulator.dylib"
+            OUT_NAME="libgodot_lottie.ios.$TARGET.x86_64.simulator.a"
+            THORVG_BUILDDIR="$SCRIPT_DIR/thirdparty/thorvg/builddir_ios-x86_64-simulator"
             ;;
     esac
 
@@ -107,23 +110,28 @@ build_variant() {
         dlink_enabled=no \
         -j"$(sysctl -n hw.ncpu)"
 
-    # godot-cpp writes the .dylib to bin/ using its own suffix scheme. Locate
-    # it and move into our intermediates dir for the xcframework step.
-    # The exact filename godot-cpp emits depends on the version, so glob it.
+    # SCons now produces a .a (StaticLibrary). Locate it in bin/.
     echo "bin/ contents after SCons:"
     ls -la "$BIN_DIR" 2>&1 | head -20
     local PRODUCED
-    PRODUCED="$(ls "$BIN_DIR"/libgodot_lottie.ios.${TARGET}*.dylib 2>/dev/null | head -1)"
+    PRODUCED="$(ls "$BIN_DIR"/libgodot_lottie.ios.${TARGET}*.a 2>/dev/null | head -1)"
     if [ -z "$PRODUCED" ] || [ ! -f "$PRODUCED" ]; then
-        echo "ERROR: SCons did not produce a .dylib for ios $TARGET $VARIANT"
+        echo "ERROR: SCons did not produce a .a for ios $TARGET $VARIANT"
         exit 1
     fi
-    mv "$PRODUCED" "$INTERMEDIATES/$OUT_NAME"
-    # Fix the install name to match the actual filename inside the xcframework slice.
-    # dyld resolves @rpath/<name> by looking for a file named exactly <name> in
-    # Frameworks/, so the install name must equal the dylib's filename.
-    install_name_tool -id "@rpath/$OUT_NAME" "$INTERMEDIATES/$OUT_NAME"
-    echo "  -> $INTERMEDIATES/$OUT_NAME (install_name: @rpath/$OUT_NAME)"
+
+    # Merge extension .a with ThorVG .a into a single archive.
+    # libtool -static combines multiple .a files; the result contains all .o
+    # files from both archives so the linker sees everything in one step.
+    local THORVG_LIB="$THORVG_BUILDDIR/src/libthorvg.a"
+    if [ ! -f "$THORVG_LIB" ]; then
+        echo "ERROR: ThorVG .a not found: $THORVG_LIB"
+        echo "       Run: ./build_thorvg_ios.sh"
+        exit 1
+    fi
+    libtool -static -o "$INTERMEDIATES/$OUT_NAME" "$PRODUCED" "$THORVG_LIB"
+    rm -f "$PRODUCED"
+    echo "  -> $INTERMEDIATES/$OUT_NAME"
 }
 
 for tgt in $TARGETS; do
@@ -132,63 +140,58 @@ for tgt in $TARGETS; do
     done
 done
 
-# ---- Lipo simulator dylibs (arm64 + x86_64) ------------------------------
+# ---- Lipo simulator .a files (arm64 + x86_64) ----------------------------
 
-combine_simulator_dylibs() {
+combine_simulator_libs() {
     local TARGET="$1"
-    local ARM_DYLIB="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.arm64.simulator.dylib"
-    local X86_DYLIB="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.x86_64.simulator.dylib"
-    local OUT="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.dylib"
+    local ARM_LIB="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.arm64.simulator.a"
+    local X86_LIB="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.x86_64.simulator.a"
+    local OUT="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.a"
 
-    local SIM_NAME="libgodot_lottie.ios.$TARGET.simulator.dylib"
-
-    if [ -f "$ARM_DYLIB" ] && [ -f "$X86_DYLIB" ]; then
+    if [ -f "$ARM_LIB" ] && [ -f "$X86_LIB" ]; then
         echo
-        echo "=== lipo simulator dylibs for $TARGET ==="
-        lipo -create "$ARM_DYLIB" "$X86_DYLIB" -output "$OUT"
-    elif [ -f "$ARM_DYLIB" ]; then
-        cp "$ARM_DYLIB" "$OUT"
-    elif [ -f "$X86_DYLIB" ]; then
-        cp "$X86_DYLIB" "$OUT"
+        echo "=== lipo simulator .a files for $TARGET ==="
+        lipo -create "$ARM_LIB" "$X86_LIB" -output "$OUT"
+    elif [ -f "$ARM_LIB" ]; then
+        cp "$ARM_LIB" "$OUT"
+    elif [ -f "$X86_LIB" ]; then
+        cp "$X86_LIB" "$OUT"
     fi
-
-    # Fix install name: lipo/cp preserves the source's install name which may
-    # differ from the merged filename. Set it to match the xcframework filename.
-    if [ -f "$OUT" ]; then
-        install_name_tool -id "@rpath/$SIM_NAME" "$OUT"
-        echo "  -> $OUT (install_name: @rpath/$SIM_NAME)"
-    fi
+    [ -f "$OUT" ] && echo "  -> $OUT"
 }
 
-# ---- Build xcframeworks ---------------------------------------------------
+# ---- Build xcframeworks from static .a files -----------------------------
 
 build_xcframework() {
     local TARGET="$1"
-    local DEVICE_DYLIB="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.arm64.dylib"
-    local SIM_DYLIB="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.dylib"
+    local DEVICE_A="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.arm64.a"
+    local SIM_A="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.a"
     local XCF="$BIN_DIR/libgodot_lottie.ios.$TARGET.xcframework"
+    # xcodebuild requires a headers dir when using -library with a .a file.
+    local HEADERS="$INTERMEDIATES/headers"
+    mkdir -p "$HEADERS"
 
     local ARGS=()
-    if [ -f "$DEVICE_DYLIB" ]; then
-        ARGS+=(-library "$DEVICE_DYLIB")
+    if [ -f "$DEVICE_A" ]; then
+        ARGS+=(-library "$DEVICE_A" -headers "$HEADERS")
     fi
-    if [ -f "$SIM_DYLIB" ]; then
-        ARGS+=(-library "$SIM_DYLIB")
+    if [ -f "$SIM_A" ]; then
+        ARGS+=(-library "$SIM_A" -headers "$HEADERS")
     fi
     if [ ${#ARGS[@]} -eq 0 ]; then
-        echo "WARN: no dylibs for $TARGET, skipping xcframework"
+        echo "WARN: no .a files for $TARGET, skipping xcframework"
         return
     fi
 
     echo
-    echo "=== xcodebuild -create-xcframework ($TARGET) ==="
+    echo "=== xcodebuild -create-xcframework ($TARGET, static) ==="
     rm -rf "$XCF"
     xcodebuild -create-xcframework "${ARGS[@]}" -output "$XCF"
     echo "  -> $XCF"
 }
 
 for tgt in $TARGETS; do
-    combine_simulator_dylibs "$tgt"
+    combine_simulator_libs "$tgt"
     build_xcframework "$tgt"
 done
 
