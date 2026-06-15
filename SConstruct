@@ -18,10 +18,14 @@ if env["platform"] == "linux":
     env.Append(CCFLAGS=["-fopenmp"])
     env.Append(LINKFLAGS=["-fopenmp"])
 
-# iOS: set @rpath-based install name so dyld can find the .dylib at runtime
-# Without this, the .dylib bakes in the build-time path which doesn't exist on device
+# iOS: set @rpath-based install name so dyld can find the .dylib at runtime.
+# The name must match the actual filename inside the xcframework slice, which
+# uses godot-cpp's full suffix (e.g. libgodot_lottie.ios.template_release.arm64.dylib).
+# build_extension_ios.sh also runs install_name_tool after rename/lipo for the
+# simulator slices which get renamed to a different filename.
 if env["platform"] == "ios":
-    env.Append(LINKFLAGS=["-Wl,-install_name,@rpath/libgodot_lottie.dylib"])
+    dylib_name = "libgodot_lottie{}{}".format(env["suffix"], env["SHLIBSUFFIX"])
+    env.Append(LINKFLAGS=["-Wl,-install_name,@rpath/{}".format(dylib_name)])
 
 # Source files
 env.Append(CPPPATH=["src/"])

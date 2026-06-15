@@ -119,7 +119,11 @@ build_variant() {
         exit 1
     fi
     mv "$PRODUCED" "$INTERMEDIATES/$OUT_NAME"
-    echo "  -> $INTERMEDIATES/$OUT_NAME"
+    # Fix the install name to match the actual filename inside the xcframework slice.
+    # dyld resolves @rpath/<name> by looking for a file named exactly <name> in
+    # Frameworks/, so the install name must equal the dylib's filename.
+    install_name_tool -id "@rpath/$OUT_NAME" "$INTERMEDIATES/$OUT_NAME"
+    echo "  -> $INTERMEDIATES/$OUT_NAME (install_name: @rpath/$OUT_NAME)"
 }
 
 for tgt in $TARGETS; do
@@ -136,15 +140,23 @@ combine_simulator_dylibs() {
     local X86_DYLIB="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.x86_64.simulator.dylib"
     local OUT="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.dylib"
 
+    local SIM_NAME="libgodot_lottie.ios.$TARGET.simulator.dylib"
+
     if [ -f "$ARM_DYLIB" ] && [ -f "$X86_DYLIB" ]; then
         echo
         echo "=== lipo simulator dylibs for $TARGET ==="
         lipo -create "$ARM_DYLIB" "$X86_DYLIB" -output "$OUT"
-        echo "  -> $OUT"
     elif [ -f "$ARM_DYLIB" ]; then
-        cp "$ARM_DYLIB" "$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.dylib"
+        cp "$ARM_DYLIB" "$OUT"
     elif [ -f "$X86_DYLIB" ]; then
-        cp "$X86_DYLIB" "$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.dylib"
+        cp "$X86_DYLIB" "$OUT"
+    fi
+
+    # Fix install name: lipo/cp preserves the source's install name which may
+    # differ from the merged filename. Set it to match the xcframework filename.
+    if [ -f "$OUT" ]; then
+        install_name_tool -id "@rpath/$SIM_NAME" "$OUT"
+        echo "  -> $OUT (install_name: @rpath/$SIM_NAME)"
     fi
 }
 
