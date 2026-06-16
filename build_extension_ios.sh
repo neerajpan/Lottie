@@ -167,16 +167,13 @@ build_xcframework() {
     local DEVICE_A="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.arm64.a"
     local SIM_A="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.a"
     local XCF="$BIN_DIR/libgodot_lottie.ios.$TARGET.xcframework"
-    # xcodebuild requires a headers dir when using -library with a .a file.
-    local HEADERS="$INTERMEDIATES/headers"
-    mkdir -p "$HEADERS"
 
     local ARGS=()
     if [ -f "$DEVICE_A" ]; then
-        ARGS+=(-library "$DEVICE_A" -headers "$HEADERS")
+        ARGS+=(-library "$DEVICE_A")
     fi
     if [ -f "$SIM_A" ]; then
-        ARGS+=(-library "$SIM_A" -headers "$HEADERS")
+        ARGS+=(-library "$SIM_A")
     fi
     if [ ${#ARGS[@]} -eq 0 ]; then
         echo "WARN: no .a files for $TARGET, skipping xcframework"
