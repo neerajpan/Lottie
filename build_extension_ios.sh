@@ -123,10 +123,10 @@ build_variant() {
     # Find the godot-cpp static library produced by SConscript.
     # It lives in thirdparty/godot-cpp/bin/ with the same target/arch suffix.
     local GODOT_CPP_LIB
-    GODOT_CPP_LIB="$(ls "$SCRIPT_DIR/thirdparty/godot-cpp/bin/"libgodot-cpp.ios.${TARGET}*.a 2>/dev/null | head -1)"
+    GODOT_CPP_LIB="$(ls "$SCRIPT_DIR/thirdparty/godot-cpp/bin/"libgodot-cpp.ios.${TARGET}.${ARCH}*.a 2>/dev/null | head -1)"
     if [ -z "$GODOT_CPP_LIB" ] || [ ! -f "$GODOT_CPP_LIB" ]; then
         echo "ERROR: godot-cpp .a not found in thirdparty/godot-cpp/bin/"
-        echo "       Expected: libgodot-cpp.ios.${TARGET}*.a"
+        echo "       Expected: libgodot-cpp.ios.${TARGET}.${ARCH}*.a"
         echo "       Available: $(ls "$SCRIPT_DIR/thirdparty/godot-cpp/bin/"*.a 2>/dev/null)"
         exit 1
     fi
