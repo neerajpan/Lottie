@@ -133,14 +133,28 @@ build_variant() {
     echo "  godot-cpp: $GODOT_CPP_LIB"
 
     # Merge extension .a + godot-cpp .a + ThorVG .a into one archive.
-    # All three are needed: extension code, C++ bindings, and the renderer.
+    # We use ar extract+repack rather than libtool -static to avoid a macOS
+    # libtool bug where case-insensitive path resolution treats the same
+    # archive as appearing twice, triggering a false "duplicate member" error.
     local THORVG_LIB="$THORVG_BUILDDIR/src/libthorvg.a"
     if [ ! -f "$THORVG_LIB" ]; then
         echo "ERROR: ThorVG .a not found: $THORVG_LIB"
         echo "       Run: ./build_thorvg_ios.sh"
         exit 1
     fi
-    libtool -static -o "$INTERMEDIATES/$OUT_NAME" "$PRODUCED" "$GODOT_CPP_LIB" "$THORVG_LIB"
+
+    local _MERGE_TMP
+    _MERGE_TMP="$(mktemp -d)"
+    mkdir "$_MERGE_TMP/ext" "$_MERGE_TMP/gcpp" "$_MERGE_TMP/tvg"
+    (cd "$_MERGE_TMP/ext"  && ar -x "$PRODUCED")
+    (cd "$_MERGE_TMP/gcpp" && ar -x "$GODOT_CPP_LIB")
+    (cd "$_MERGE_TMP/tvg"  && ar -x "$THORVG_LIB")
+    # Prefix godot-cpp and ThorVG objects to prevent duplicate member names
+    for f in "$_MERGE_TMP/gcpp/"*.o; do [ -f "$f" ] && mv "$f" "${f%.o}_g.o"; done
+    for f in "$_MERGE_TMP/tvg/"*.o;  do [ -f "$f" ] && mv "$f" "${f%.o}_t.o"; done
+    find "$_MERGE_TMP" -name "*.o" | sort | xargs ar -crs "$INTERMEDIATES/$OUT_NAME"
+    ranlib "$INTERMEDIATES/$OUT_NAME"
+    rm -rf "$_MERGE_TMP"
     rm -f "$PRODUCED"
     echo "  -> $INTERMEDIATES/$OUT_NAME"
 }
