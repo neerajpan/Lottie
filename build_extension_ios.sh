@@ -120,16 +120,27 @@ build_variant() {
         exit 1
     fi
 
-    # Merge extension .a with ThorVG .a into a single archive.
-    # libtool -static combines multiple .a files; the result contains all .o
-    # files from both archives so the linker sees everything in one step.
+    # Find the godot-cpp static library produced by SConscript.
+    # It lives in thirdparty/godot-cpp/bin/ with the same target/arch suffix.
+    local GODOT_CPP_LIB
+    GODOT_CPP_LIB="$(ls "$SCRIPT_DIR/thirdparty/godot-cpp/bin/"libgodot-cpp.ios.${TARGET}*.a 2>/dev/null | head -1)"
+    if [ -z "$GODOT_CPP_LIB" ] || [ ! -f "$GODOT_CPP_LIB" ]; then
+        echo "ERROR: godot-cpp .a not found in thirdparty/godot-cpp/bin/"
+        echo "       Expected: libgodot-cpp.ios.${TARGET}*.a"
+        echo "       Available: $(ls "$SCRIPT_DIR/thirdparty/godot-cpp/bin/"*.a 2>/dev/null)"
+        exit 1
+    fi
+    echo "  godot-cpp: $GODOT_CPP_LIB"
+
+    # Merge extension .a + godot-cpp .a + ThorVG .a into one archive.
+    # All three are needed: extension code, C++ bindings, and the renderer.
     local THORVG_LIB="$THORVG_BUILDDIR/src/libthorvg.a"
     if [ ! -f "$THORVG_LIB" ]; then
         echo "ERROR: ThorVG .a not found: $THORVG_LIB"
         echo "       Run: ./build_thorvg_ios.sh"
         exit 1
     fi
-    libtool -static -o "$INTERMEDIATES/$OUT_NAME" "$PRODUCED" "$THORVG_LIB"
+    libtool -static -o "$INTERMEDIATES/$OUT_NAME" "$PRODUCED" "$GODOT_CPP_LIB" "$THORVG_LIB"
     rm -f "$PRODUCED"
     echo "  -> $INTERMEDIATES/$OUT_NAME"
 }
