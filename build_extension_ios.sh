@@ -121,13 +121,28 @@ build_variant() {
     fi
 
     # Find the godot-cpp static library produced by SConscript.
-    # It lives in thirdparty/godot-cpp/bin/ with the same target/arch suffix.
+    # godot-cpp 4.5+ appends .simulator to the lib name for simulator builds;
+    # 4.4.x does not. Use exact paths (not a glob) so that a leftover device
+    # arm64.a is never picked up for a simulator build, which would produce a
+    # mixed-platform archive and trigger "binaries with multiple platforms
+    # not supported" from xcodebuild -create-xcframework.
     local GODOT_CPP_LIB
-    GODOT_CPP_LIB="$(ls "$SCRIPT_DIR/thirdparty/godot-cpp/bin/"libgodot-cpp.ios.${TARGET}.${ARCH}*.a 2>/dev/null | head -1)"
+    local GCPP_BIN="$SCRIPT_DIR/thirdparty/godot-cpp/bin"
+    if [ "$SIM_FLAG" = "ios_simulator=yes" ]; then
+        # Prefer the .simulator.a produced by godot-cpp 4.5+; fall back to
+        # the plain .a produced by 4.4.x (overwritten by the simulator SCons
+        # run, so it contains simulator objects by the time we reach here).
+        GODOT_CPP_LIB="$GCPP_BIN/libgodot-cpp.ios.${TARGET}.${ARCH}.simulator.a"
+        [ -f "$GODOT_CPP_LIB" ] || \
+            GODOT_CPP_LIB="$GCPP_BIN/libgodot-cpp.ios.${TARGET}.${ARCH}.a"
+    else
+        # Device: use the plain .a (never pick up a same-arch simulator lib).
+        GODOT_CPP_LIB="$GCPP_BIN/libgodot-cpp.ios.${TARGET}.${ARCH}.a"
+    fi
     if [ -z "$GODOT_CPP_LIB" ] || [ ! -f "$GODOT_CPP_LIB" ]; then
-        echo "ERROR: godot-cpp .a not found in thirdparty/godot-cpp/bin/"
-        echo "       Expected: libgodot-cpp.ios.${TARGET}.${ARCH}*.a"
-        echo "       Available: $(ls "$SCRIPT_DIR/thirdparty/godot-cpp/bin/"*.a 2>/dev/null)"
+        echo "ERROR: godot-cpp .a not found in $GCPP_BIN/"
+        echo "       Expected: libgodot-cpp.ios.${TARGET}.${ARCH}[.simulator].a"
+        echo "       Available: $(ls "$GCPP_BIN/"*.a 2>/dev/null)"
         exit 1
     fi
     echo "  godot-cpp: $GODOT_CPP_LIB"
