@@ -164,11 +164,19 @@ build_variant() {
     (cd "$_MERGE_TMP/ext"  && ar -x "$PRODUCED")
     (cd "$_MERGE_TMP/gcpp" && ar -x "$GODOT_CPP_LIB")
     (cd "$_MERGE_TMP/tvg"  && ar -x "$THORVG_LIB")
+    echo "  [diag] ext objects:  $(ls "$_MERGE_TMP/ext/"*.o 2>/dev/null | wc -l)"
+    echo "  [diag] gcpp objects: $(ls "$_MERGE_TMP/gcpp/"*.o 2>/dev/null | wc -l)"
+    echo "  [diag] tvg objects:  $(ls "$_MERGE_TMP/tvg/"*.o 2>/dev/null | wc -l)"
+    echo "  [diag] gcpp object.cpp.o present: $(ls "$_MERGE_TMP/gcpp/object.cpp.o" 2>/dev/null && echo YES || echo NO)"
     # Prefix godot-cpp and ThorVG objects to prevent duplicate member names
     for f in "$_MERGE_TMP/gcpp/"*.o; do [ -f "$f" ] && mv "$f" "${f%.o}_g.o"; done
     for f in "$_MERGE_TMP/tvg/"*.o;  do [ -f "$f" ] && mv "$f" "${f%.o}_t.o"; done
     find "$_MERGE_TMP" -name "*.o" | sort | xargs ar -crs "$INTERMEDIATES/$OUT_NAME"
     ranlib "$INTERMEDIATES/$OUT_NAME"
+    echo "  [diag] merged archive members: $(ar -t "$INTERMEDIATES/$OUT_NAME" | wc -l)"
+    echo "  [diag] object_g.o in merged:   $(ar -t "$INTERMEDIATES/$OUT_NAME" | grep -c 'object.*_g\.o' || echo 0)"
+    echo "  [diag] undefined in merged archive:"
+    nm -u "$INTERMEDIATES/$OUT_NAME" 2>/dev/null | grep -E "register_dynamic_symbol|apple_embedded|MethodInfo|get_object_instance|_main" || echo "    (none of the tracked symbols undefined)"
     rm -rf "$_MERGE_TMP"
     rm -f "$PRODUCED"
     echo "  -> $INTERMEDIATES/$OUT_NAME"
