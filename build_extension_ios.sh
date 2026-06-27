@@ -160,23 +160,50 @@ build_variant() {
 
     local _MERGE_TMP
     _MERGE_TMP="$(mktemp -d)"
-    mkdir "$_MERGE_TMP/ext" "$_MERGE_TMP/gcpp" "$_MERGE_TMP/tvg"
-    (cd "$_MERGE_TMP/ext"  && ar -x "$PRODUCED")
-    (cd "$_MERGE_TMP/gcpp" && ar -x "$GODOT_CPP_LIB")
-    (cd "$_MERGE_TMP/tvg"  && ar -x "$THORVG_LIB")
-    echo "  [diag] ext objects:  $(ls "$_MERGE_TMP/ext/"*.o 2>/dev/null | wc -l)"
-    echo "  [diag] gcpp objects: $(ls "$_MERGE_TMP/gcpp/"*.o 2>/dev/null | wc -l)"
-    echo "  [diag] tvg objects:  $(ls "$_MERGE_TMP/tvg/"*.o 2>/dev/null | wc -l)"
-    echo "  [diag] gcpp object.cpp.o present: $(ls "$_MERGE_TMP/gcpp/object.cpp.o" 2>/dev/null && echo YES || echo NO)"
-    # Prefix godot-cpp and ThorVG objects to prevent duplicate member names
-    for f in "$_MERGE_TMP/gcpp/"*.o; do [ -f "$f" ] && mv "$f" "${f%.o}_g.o"; done
-    for f in "$_MERGE_TMP/tvg/"*.o;  do [ -f "$f" ] && mv "$f" "${f%.o}_t.o"; done
-    find "$_MERGE_TMP" -name "*.o" | sort | xargs ar -crs "$INTERMEDIATES/$OUT_NAME"
+    mkdir "$_MERGE_TMP/ext_raw" "$_MERGE_TMP/gcpp_raw" "$_MERGE_TMP/tvg_raw" "$_MERGE_TMP/objs"
+
+    # Extract each archive into its own raw dir. ar -x on macOS may create
+    # subdirectory structure when member names contain slashes (path-based
+    # names used by godot-cpp's SCons build). We handle this by collecting
+    # objects recursively with find rather than relying on flat glob.
+    (cd "$_MERGE_TMP/ext_raw"  && ar -x "$PRODUCED")
+    (cd "$_MERGE_TMP/gcpp_raw" && ar -x "$GODOT_CPP_LIB")
+    (cd "$_MERGE_TMP/tvg_raw"  && ar -x "$THORVG_LIB")
+
+    echo "  [diag] ext raw objects:  $(find "$_MERGE_TMP/ext_raw"  -name "*.o" | wc -l | tr -d ' ')"
+    echo "  [diag] gcpp raw objects: $(find "$_MERGE_TMP/gcpp_raw" -name "*.o" | wc -l | tr -d ' ')"
+    echo "  [diag] tvg raw objects:  $(find "$_MERGE_TMP/tvg_raw"  -name "*.o" | wc -l | tr -d ' ')"
+    echo "  [diag] object.cpp.o in gcpp_raw: $(find "$_MERGE_TMP/gcpp_raw" -name "object.cpp.o" | head -3 || echo MISSING)"
+
+    # Flatten all objects into a single dir with unique counter-prefixed names.
+    # Prefix e/g/t prevents cross-archive basename collisions; counter prevents
+    # intra-archive collisions when path-based members share the same basename.
+    local N=0
+    while IFS= read -r f; do
+        cp "$f" "$_MERGE_TMP/objs/e${N}_$(basename "$f")"
+        N=$((N+1))
+    done < <(find "$_MERGE_TMP/ext_raw" -name "*.o" | sort)
+
+    N=0
+    while IFS= read -r f; do
+        cp "$f" "$_MERGE_TMP/objs/g${N}_$(basename "$f")"
+        N=$((N+1))
+    done < <(find "$_MERGE_TMP/gcpp_raw" -name "*.o" | sort)
+
+    N=0
+    while IFS= read -r f; do
+        cp "$f" "$_MERGE_TMP/objs/t${N}_$(basename "$f")"
+        N=$((N+1))
+    done < <(find "$_MERGE_TMP/tvg_raw" -name "*.o" | sort)
+
+    echo "  [diag] total flat objects: $(ls "$_MERGE_TMP/objs/" | wc -l | tr -d ' ')"
+    echo "  [diag] object_g in flat:   $(ls "$_MERGE_TMP/objs/" | grep -c 'object\.cpp' || echo 0)"
+
+    find "$_MERGE_TMP/objs" -name "*.o" | sort | xargs ar -crs "$INTERMEDIATES/$OUT_NAME"
     ranlib "$INTERMEDIATES/$OUT_NAME"
-    echo "  [diag] merged archive members: $(ar -t "$INTERMEDIATES/$OUT_NAME" | wc -l)"
-    echo "  [diag] object_g.o in merged:   $(ar -t "$INTERMEDIATES/$OUT_NAME" | grep -c 'object.*_g\.o' || echo 0)"
-    echo "  [diag] undefined in merged archive:"
-    nm -u "$INTERMEDIATES/$OUT_NAME" 2>/dev/null | grep -E "register_dynamic_symbol|apple_embedded|MethodInfo|get_object_instance|_main" || echo "    (none of the tracked symbols undefined)"
+    echo "  [diag] merged members: $(ar -t "$INTERMEDIATES/$OUT_NAME" | wc -l | tr -d ' ')"
+    echo "  [diag] undefined MethodInfo/get_object_instance in merged:"
+    nm -u "$INTERMEDIATES/$OUT_NAME" 2>/dev/null | grep -E "MethodInfo|get_object_instance" || echo "    (none — symbols are defined)"
     rm -rf "$_MERGE_TMP"
     rm -f "$PRODUCED"
     echo "  -> $INTERMEDIATES/$OUT_NAME"
