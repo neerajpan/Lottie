@@ -204,13 +204,14 @@ jobs:
       - name: Install build deps
         run: brew install meson ninja scons
 
-      - name: Build ThorVG for iOS (device + sim arm64 + sim x86_64)
+      - name: Build ThorVG for iOS (device only)
         run: |
           chmod +x build_thorvg_ios.sh
-          ./build_thorvg_ios.sh
+          VARIANTS=device ./build_thorvg_ios.sh
 
       - name: Build extension xcframework(s)
         env:
+          VARIANTS: device
           TARGETS: >-
             ${{ inputs.targets == 'debug_only' && 'template_debug' ||
                 inputs.targets == 'release_only' && 'template_release' ||
