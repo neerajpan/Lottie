@@ -23,6 +23,15 @@ if env["platform"] == "linux":
 env.Append(CPPPATH=["src/"])
 sources = Glob("src/*.cpp")
 
+# iOS: godot-cpp's static archive loses src/core/object.cpp because both
+# src/core/object.cpp and gen/src/classes/object.cpp compile to the same
+# archive member name (object.cpp.<suffix>.o), and macOS ar -r replaces the
+# first with the second. The missing symbols are MethodInfo constructors and
+# get_object_instance_binding. Re-compile the file as part of our extension
+# so it ends up in $PRODUCED and survives the merge into the xcframework .a.
+if env["platform"] == "ios":
+    sources.append("thirdparty/godot-cpp/src/core/object.cpp")
+
 # ThorVG integration - Platform-specific library handling
 env.Append(CPPPATH=["thirdparty/thorvg/inc"])
 # TVG_STATIC tells thorvg.h to skip the __declspec(dllimport) decoration on
