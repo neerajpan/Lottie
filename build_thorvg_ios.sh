@@ -120,7 +120,7 @@ EOF
             --cross-file "$CROSSFILE" \
             -Dbuildtype=release -Doptimization=3 -Db_ndebug=true \
             -Ddefault_library=static \
-            -Dsimd=true -Dthreads=false -Dpartial=true \
+            -Dsimd=true -Dthreads=false -Dpartial=false \
             -Dengines=sw -Dloaders=lottie -Dbindings=capi \
             -Dexamples=false -Dtests=false \
             --backend=ninja && \

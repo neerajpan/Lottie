@@ -725,6 +725,13 @@ LottieAnimation::~LottieAnimation() {
 void LottieAnimation::_initialize_thorvg() {
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
+        UtilityFunctions::print("[lottie] v0.8.0"
+#ifdef LOTTIE_IOS_BUILD
+            " ios=yes partial=off"
+#else
+            " ios=no"
+#endif
+            " built=" __DATE__);
 #ifdef LOTTIE_IOS_BUILD
         // iOS: ThorVG's pthread task scheduler causes mutex crashes at runtime.
         // Use 0 threads (single-threaded). LOTTIE_IOS_BUILD is set explicitly
@@ -757,14 +764,14 @@ void LottieAnimation::_initialize_thorvg() {
     if (engine_option == 1) render_opt = tvg::EngineOption::SmartRender;
 #endif
 
-    UtilityFunctions::print("[diag] Creating SwCanvas, engine_option=", engine_option,
+    UtilityFunctions::print("[diag] SwCanvas::gen BEGIN engine_opt=", engine_option,
         " render_opt=", (int)render_opt);
     canvas = tvg::SwCanvas::gen(render_opt);
+    UtilityFunctions::print("[diag] SwCanvas::gen END canvas=", canvas != nullptr ? "ok" : "null");
     if (!canvas) {
         UtilityFunctions::printerr("Failed to create ThorVG canvas");
         return;
     }
-    UtilityFunctions::print("[diag] SwCanvas created OK");
 
     _allocate_buffer_and_target(render_size);
     UtilityFunctions::print("[diag] Buffer allocated OK");
