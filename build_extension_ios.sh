@@ -202,8 +202,12 @@ build_variant() {
     find "$_MERGE_TMP/objs" -name "*.o" | sort | xargs ar -crs "$INTERMEDIATES/$OUT_NAME"
     ranlib "$INTERMEDIATES/$OUT_NAME"
     echo "  [diag] merged members: $(ar -t "$INTERMEDIATES/$OUT_NAME" | wc -l | tr -d ' ')"
-    echo "  [diag] undefined MethodInfo/get_object_instance in merged:"
-    nm -u "$INTERMEDIATES/$OUT_NAME" 2>/dev/null | grep -E "MethodInfo|get_object_instance" || echo "    (none — symbols are defined)"
+    # DEFINED check: T/W = defined text/weak symbol. If blank, the sources.append fix failed.
+    echo "  [diag] get_object_instance_binding DEFINED in merged (should be non-empty):"
+    nm "$INTERMEDIATES/$OUT_NAME" 2>/dev/null | grep -E "[TW].*get_object_instance_binding" | head -3 || echo "    WARNING: symbol NOT defined — archive collision fix not working"
+    # UNDEFINED refs are normal for a static library (Godot engine provides them at link time).
+    echo "  [diag] undefined refs in merged (normal — resolved at link time by Godot engine):"
+    nm -u "$INTERMEDIATES/$OUT_NAME" 2>/dev/null | grep -E "MethodInfo|get_object_instance" | wc -l | xargs -I{} echo "    {} undefined refs"
     rm -rf "$_MERGE_TMP"
     rm -f "$PRODUCED"
     echo "  -> $INTERMEDIATES/$OUT_NAME"
@@ -236,6 +240,9 @@ combine_simulator_libs() {
 }
 
 # ---- Build xcframeworks from static .a files -----------------------------
+# We construct the xcframework directory structure manually rather than
+# calling `xcodebuild -create-xcframework`, which fails on single-slice
+# (device-only) builds with newer Xcode versions.
 
 build_xcframework() {
     local TARGET="$1"
@@ -243,22 +250,69 @@ build_xcframework() {
     local SIM_A="$INTERMEDIATES/libgodot_lottie.ios.$TARGET.simulator.a"
     local XCF="$BIN_DIR/libgodot_lottie.ios.$TARGET.xcframework"
 
-    local ARGS=()
-    if [ -f "$DEVICE_A" ]; then
-        ARGS+=(-library "$DEVICE_A")
-    fi
-    if [ -f "$SIM_A" ]; then
-        ARGS+=(-library "$SIM_A")
-    fi
-    if [ ${#ARGS[@]} -eq 0 ]; then
+    if [ ! -f "$DEVICE_A" ] && [ ! -f "$SIM_A" ]; then
         echo "WARN: no .a files for $TARGET, skipping xcframework"
         return
     fi
 
     echo
-    echo "=== xcodebuild -create-xcframework ($TARGET, static) ==="
+    echo "=== Building xcframework ($TARGET) ==="
     rm -rf "$XCF"
-    xcodebuild -create-xcframework "${ARGS[@]}" -output "$XCF"
+    mkdir -p "$XCF"
+
+    # Accumulate <dict> entries for Info.plist
+    local LIB_ENTRIES=""
+
+    if [ -f "$DEVICE_A" ]; then
+        local DEV_FILENAME; DEV_FILENAME="$(basename "$DEVICE_A")"
+        mkdir -p "$XCF/ios-arm64"
+        cp "$DEVICE_A" "$XCF/ios-arm64/$DEV_FILENAME"
+        LIB_ENTRIES="${LIB_ENTRIES}
+        <dict>
+            <key>LibraryIdentifier</key><string>ios-arm64</string>
+            <key>LibraryPath</key><string>${DEV_FILENAME}</string>
+            <key>SupportedArchitectures</key><array><string>arm64</string></array>
+            <key>SupportedPlatform</key><string>ios</string>
+        </dict>"
+        echo "  slice: ios-arm64/$DEV_FILENAME"
+    fi
+
+    if [ -f "$SIM_A" ]; then
+        local SIM_FILENAME; SIM_FILENAME="$(basename "$SIM_A")"
+        # Detect architectures in the simulator fat library
+        local SIM_ARCHS; SIM_ARCHS="$(lipo -archs "$SIM_A" 2>/dev/null || echo "arm64")"
+        local SIM_ID SIM_ARCH_XML
+        if echo "$SIM_ARCHS" | grep -q "x86_64"; then
+            SIM_ID="ios-arm64_x86_64-simulator"
+            SIM_ARCH_XML="<string>arm64</string><string>x86_64</string>"
+        else
+            SIM_ID="ios-arm64-simulator"
+            SIM_ARCH_XML="<string>arm64</string>"
+        fi
+        mkdir -p "$XCF/$SIM_ID"
+        cp "$SIM_A" "$XCF/$SIM_ID/$SIM_FILENAME"
+        LIB_ENTRIES="${LIB_ENTRIES}
+        <dict>
+            <key>LibraryIdentifier</key><string>${SIM_ID}</string>
+            <key>LibraryPath</key><string>${SIM_FILENAME}</string>
+            <key>SupportedArchitectures</key><array>${SIM_ARCH_XML}</array>
+            <key>SupportedPlatform</key><string>ios</string>
+            <key>SupportedPlatformVariant</key><string>simulator</string>
+        </dict>"
+        echo "  slice: $SIM_ID/$SIM_FILENAME"
+    fi
+
+    # Write Info.plist
+    {
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n'
+        printf '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        printf '<plist version="1.0">\n<dict>\n'
+        printf '    <key>AvailableLibraries</key>\n    <array>%s\n    </array>\n' "$LIB_ENTRIES"
+        printf '    <key>CFBundlePackageType</key>\n    <string>XFWK</string>\n'
+        printf '    <key>XCFrameworkFormatVersion</key>\n    <string>1.0</string>\n'
+        printf '</dict>\n</plist>\n'
+    } > "$XCF/Info.plist"
+
     echo "  -> $XCF"
 }
 
