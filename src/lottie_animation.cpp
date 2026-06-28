@@ -749,7 +749,9 @@ void LottieAnimation::_initialize_thorvg() {
     }
 
     tvg::EngineOption render_opt = tvg::EngineOption::Default;
+#ifndef LOTTIE_IOS_BUILD
     if (engine_option == 1) render_opt = tvg::EngineOption::SmartRender;
+#endif
 
     UtilityFunctions::print("[diag] Creating SwCanvas, engine_option=", engine_option);
     canvas = tvg::SwCanvas::gen(render_opt);
@@ -1734,7 +1736,9 @@ void LottieAnimation::_worker_apply_fit_transform() {
 
 void LottieAnimation::_worker_loop() {
     tvg::EngineOption worker_opt = tvg::EngineOption::Default;
+#ifndef LOTTIE_IOS_BUILD
     if (engine_option == 1) worker_opt = tvg::EngineOption::SmartRender;
+#endif
     
     w_canvas = tvg::SwCanvas::gen(worker_opt);
     if (!w_canvas) {
