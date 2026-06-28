@@ -748,12 +748,17 @@ void LottieAnimation::_initialize_thorvg() {
         thorvg_initialized = true;
     }
 
+#ifdef LOTTIE_IOS_BUILD
+    // iOS: None (=0) disables dirtyRegion entirely — same as ThorVG WASM bindings.
+    // Default (=1) enables dirtyRegion; SmartRender (=2) crashes on device (mutex EINVAL).
+    tvg::EngineOption render_opt = tvg::EngineOption::None;
+#else
     tvg::EngineOption render_opt = tvg::EngineOption::Default;
-#ifndef LOTTIE_IOS_BUILD
     if (engine_option == 1) render_opt = tvg::EngineOption::SmartRender;
 #endif
 
-    UtilityFunctions::print("[diag] Creating SwCanvas, engine_option=", engine_option);
+    UtilityFunctions::print("[diag] Creating SwCanvas, engine_option=", engine_option,
+        " render_opt=", (int)render_opt);
     canvas = tvg::SwCanvas::gen(render_opt);
     if (!canvas) {
         UtilityFunctions::printerr("Failed to create ThorVG canvas");
@@ -1735,11 +1740,13 @@ void LottieAnimation::_worker_apply_fit_transform() {
 }
 
 void LottieAnimation::_worker_loop() {
+#ifdef LOTTIE_IOS_BUILD
+    tvg::EngineOption worker_opt = tvg::EngineOption::None;
+#else
     tvg::EngineOption worker_opt = tvg::EngineOption::Default;
-#ifndef LOTTIE_IOS_BUILD
     if (engine_option == 1) worker_opt = tvg::EngineOption::SmartRender;
 #endif
-    
+
     w_canvas = tvg::SwCanvas::gen(worker_opt);
     if (!w_canvas) {
         UtilityFunctions::printerr("Worker: Failed to create ThorVG canvas");
