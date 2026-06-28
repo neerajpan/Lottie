@@ -236,7 +236,7 @@ combine_simulator_libs() {
     elif [ -f "$X86_LIB" ]; then
         cp "$X86_LIB" "$OUT"
     fi
-    [ -f "$OUT" ] && echo "  -> $OUT"
+    if [ -f "$OUT" ]; then echo "  -> $OUT"; fi
 }
 
 # ---- Build xcframeworks from static .a files -----------------------------
