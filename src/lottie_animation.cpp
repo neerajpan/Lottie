@@ -722,9 +722,10 @@ LottieAnimation::~LottieAnimation() {
 void LottieAnimation::_initialize_thorvg() {
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
-#if defined(__APPLE__) && defined(TARGET_OS_IOS) && TARGET_OS_IOS
-        // iOS: ThorVG's pthread-based task scheduler triggers mutex errors at
-        // runtime. Use 0 threads (single-threaded mode) to avoid this.
+#ifdef IOS_ENABLED
+        // iOS: ThorVG's pthread-based task scheduler triggers mutex errors.
+        // Use 0 threads (single-threaded) to avoid this. IOS_ENABLED is set
+        // directly by godot-cpp's ios.py as -DIOS_ENABLED, no header needed.
         unsigned int threads = 0;
 #else
         unsigned int hw_threads = std::thread::hardware_concurrency();
