@@ -706,8 +706,11 @@ LottieAnimation::LottieAnimation() {
     picture = nullptr;
     buffer = nullptr;
     
-    // Disable worker thread on Web (wasm32) where std::thread requires special threading support.
-#ifdef __EMSCRIPTEN__
+    // Disable worker thread on Web (wasm32) and iOS.
+    // Web: std::thread requires special Emscripten threading support.
+    // iOS: with ThorVG running single-threaded (threads=0), the worker thread
+    // adds no parallelism and introduces pthread synchronisation that can crash.
+#if defined(__EMSCRIPTEN__) || defined(LOTTIE_IOS_BUILD)
     render_thread_enabled = false;
 #endif
     _initialize_thorvg();
@@ -722,10 +725,10 @@ LottieAnimation::~LottieAnimation() {
 void LottieAnimation::_initialize_thorvg() {
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
-#ifdef IOS_ENABLED
-        // iOS: ThorVG's pthread-based task scheduler triggers mutex errors.
-        // Use 0 threads (single-threaded) to avoid this. IOS_ENABLED is set
-        // directly by godot-cpp's ios.py as -DIOS_ENABLED, no header needed.
+#ifdef LOTTIE_IOS_BUILD
+        // iOS: ThorVG's pthread task scheduler causes mutex crashes at runtime.
+        // Use 0 threads (single-threaded). LOTTIE_IOS_BUILD is set explicitly
+        // in our SConstruct for platform=ios — no dependency on IOS_ENABLED.
         unsigned int threads = 0;
 #else
         unsigned int hw_threads = std::thread::hardware_concurrency();

@@ -31,6 +31,10 @@ sources = Glob("src/*.cpp")
 # so it ends up in $PRODUCED and survives the merge into the xcframework .a.
 if env["platform"] == "ios":
     sources.append("thirdparty/godot-cpp/src/core/object.cpp")
+    # LOTTIE_IOS_BUILD is our own define — do not rely on IOS_ENABLED propagating
+    # from godot-cpp's ios.py, as SCons env scoping can prevent it from reaching
+    # our translation units. This define gates threads=0 and render_thread disable.
+    env.Append(CPPDEFINES=["LOTTIE_IOS_BUILD"])
 
 # ThorVG integration - Platform-specific library handling
 env.Append(CPPPATH=["thirdparty/thorvg/inc"])
