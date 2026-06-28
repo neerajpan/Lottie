@@ -747,19 +747,23 @@ void LottieAnimation::_initialize_thorvg() {
         UtilityFunctions::print("ThorVG initialized successfully! Active threads:", threads);
         thorvg_initialized = true;
     }
-    
+
     tvg::EngineOption render_opt = tvg::EngineOption::Default;
     if (engine_option == 1) render_opt = tvg::EngineOption::SmartRender;
-    
+
+    UtilityFunctions::print("[diag] Creating SwCanvas, engine_option=", engine_option);
     canvas = tvg::SwCanvas::gen(render_opt);
     if (!canvas) {
         UtilityFunctions::printerr("Failed to create ThorVG canvas");
         return;
     }
-    
+    UtilityFunctions::print("[diag] SwCanvas created OK");
+
     _allocate_buffer_and_target(render_size);
+    UtilityFunctions::print("[diag] Buffer allocated OK");
     // Only start worker when enabled (never on Web by default)
     _start_worker_if_needed();
+    UtilityFunctions::print("[diag] _initialize_thorvg complete, render_thread_enabled=", render_thread_enabled);
 }
 
 void LottieAnimation::_cleanup_thorvg() {
@@ -973,12 +977,16 @@ void LottieAnimation::_render_frame() {
         }
     }
 
-    // Set animation frame
+    UtilityFunctions::print("[diag] _render_frame: animation->frame(", current_frame, ")");
     animation->frame(current_frame);
 
+    UtilityFunctions::print("[diag] _render_frame: canvas->update()");
     canvas->update();
+    UtilityFunctions::print("[diag] _render_frame: canvas->draw()");
     canvas->draw(false);
+    UtilityFunctions::print("[diag] _render_frame: canvas->sync()");
     canvas->sync();
+    UtilityFunctions::print("[diag] _render_frame: sync done");
     
     // Copy buffer to image (reuse persistent pixel_bytes to avoid allocations)
     if (image.is_valid()) {
@@ -1028,15 +1036,19 @@ void LottieAnimation::_ensure_cache_capacity() {
 }
 
 void LottieAnimation::_ready() {
+    UtilityFunctions::print("[diag] _ready() start");
     // Process also in the editor to react to editor zoom.
     set_process_mode(Node::PROCESS_MODE_ALWAYS);
     set_process(true);
     set_notify_transform(true);
+    UtilityFunctions::print("[diag] _ready() set_process done");
     if (get_viewport()) {
         get_viewport()->connect("size_changed", Callable(this, "_on_viewport_size_changed"));
     }
+    UtilityFunctions::print("[diag] _ready() viewport connected, path=", animation_path);
     // Always load when a path is set; if autoplay is off, render the first frame statically.
     if (!animation_path.is_empty()) {
+        UtilityFunctions::print("[diag] _ready() calling _load_animation");
         if (_load_animation(animation_path)) {
             if (autoplay) {
                 play();
