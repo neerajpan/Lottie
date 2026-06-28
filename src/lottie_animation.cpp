@@ -722,22 +722,24 @@ LottieAnimation::~LottieAnimation() {
 void LottieAnimation::_initialize_thorvg() {
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
+#if defined(__APPLE__) && defined(TARGET_OS_IOS) && TARGET_OS_IOS
+        // iOS: ThorVG's pthread-based task scheduler triggers mutex errors at
+        // runtime. Use 0 threads (single-threaded mode) to avoid this.
+        unsigned int threads = 0;
+#else
         unsigned int hw_threads = std::thread::hardware_concurrency();
         unsigned int threads = hw_threads;
-        
         if (threads == 0) threads = 4;
-        
-        if (hw_threads >= 8) {
-            threads = hw_threads + 2;
-        }
-        
-        UtilityFunctions::print("Initializing ThorVG with ", threads, " threads (CPU cores: ", hw_threads, ")");
-        
+        if (hw_threads >= 8) threads = hw_threads + 2;
+#endif
+
+        UtilityFunctions::print("Initializing ThorVG with ", threads, " threads");
+
         if (tvg::Initializer::init(threads) != tvg::Result::Success) {
             UtilityFunctions::printerr("Failed to initialize ThorVG");
             return;
         }
-        
+
         UtilityFunctions::print("ThorVG initialized successfully! Active threads:", threads);
         thorvg_initialized = true;
     }

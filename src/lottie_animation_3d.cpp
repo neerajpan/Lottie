@@ -103,11 +103,14 @@ void LottieAnimation3D::_initialize_thorvg() {
     // Initializer::init(), so it is safe even if the 2D node initialised it too.
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
+#if defined(__APPLE__) && defined(TARGET_OS_IOS) && TARGET_OS_IOS
+        unsigned int threads = 0;
+#else
         unsigned int hw_threads = std::thread::hardware_concurrency();
         unsigned int threads = hw_threads;
         if (threads == 0) threads = 4;
         if (hw_threads >= 8) threads = hw_threads + 2;
-
+#endif
         if (tvg::Initializer::init(threads) != tvg::Result::Success) {
             UtilityFunctions::printerr("LottieAnimation3D: Failed to initialize ThorVG");
             return;
