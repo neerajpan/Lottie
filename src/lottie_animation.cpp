@@ -725,7 +725,7 @@ LottieAnimation::~LottieAnimation() {
 void LottieAnimation::_initialize_thorvg() {
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
-        UtilityFunctions::print("[lottie] v0.8.0"
+        UtilityFunctions::print("[lottie] v0.9.0"
 #ifdef LOTTIE_IOS_BUILD
             " ios=yes partial=off"
 #else
@@ -733,9 +733,6 @@ void LottieAnimation::_initialize_thorvg() {
 #endif
             " built=" __DATE__);
 #ifdef LOTTIE_IOS_BUILD
-        // iOS: ThorVG's pthread task scheduler causes mutex crashes at runtime.
-        // Use 0 threads (single-threaded). LOTTIE_IOS_BUILD is set explicitly
-        // in our SConstruct for platform=ios — no dependency on IOS_ENABLED.
         unsigned int threads = 0;
 #else
         unsigned int hw_threads = std::thread::hardware_concurrency();
@@ -756,8 +753,19 @@ void LottieAnimation::_initialize_thorvg() {
     }
 
 #ifdef LOTTIE_IOS_BUILD
-    // iOS: None (=0) disables dirtyRegion entirely — same as ThorVG WASM bindings.
-    // Default (=1) enables dirtyRegion; SmartRender (=2) crashes on device (mutex EINVAL).
+    // iOS: defer SwCanvas::gen() to _ready(). Calling it in the constructor
+    // crashes on iOS ("My Mac" / Designed for iPad) with a mutex EINVAL —
+    // the runtime is not fully set up at that point.
+    UtilityFunctions::print("[diag] iOS: canvas deferred to _ready()");
+#else
+    _create_thorvg_canvas();
+#endif
+}
+
+void LottieAnimation::_create_thorvg_canvas() {
+    if (canvas) return;
+
+#ifdef LOTTIE_IOS_BUILD
     tvg::EngineOption render_opt = tvg::EngineOption::None;
 #else
     tvg::EngineOption render_opt = tvg::EngineOption::Default;
@@ -775,9 +783,8 @@ void LottieAnimation::_initialize_thorvg() {
 
     _allocate_buffer_and_target(render_size);
     UtilityFunctions::print("[diag] Buffer allocated OK");
-    // Only start worker when enabled (never on Web by default)
     _start_worker_if_needed();
-    UtilityFunctions::print("[diag] _initialize_thorvg complete, render_thread_enabled=", render_thread_enabled);
+    UtilityFunctions::print("[diag] _create_thorvg_canvas complete, render_thread_enabled=", render_thread_enabled);
 }
 
 void LottieAnimation::_cleanup_thorvg() {
@@ -1051,6 +1058,11 @@ void LottieAnimation::_ensure_cache_capacity() {
 
 void LottieAnimation::_ready() {
     UtilityFunctions::print("[diag] _ready() start");
+#ifdef LOTTIE_IOS_BUILD
+    if (!canvas) {
+        _create_thorvg_canvas();
+    }
+#endif
     // Process also in the editor to react to editor zoom.
     set_process_mode(Node::PROCESS_MODE_ALWAYS);
     set_process(true);

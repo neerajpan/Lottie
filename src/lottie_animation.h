@@ -133,6 +133,7 @@ private:
     String active_state;
 
     void _initialize_thorvg();
+    void _create_thorvg_canvas();
     void _cleanup_thorvg();
     bool _load_animation(const String& path);
     void _update_animation(float delta);
