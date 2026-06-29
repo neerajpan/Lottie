@@ -1,0 +1,17 @@
+--- a/src/renderer/tvgScene.h
++++ b/src/renderer/tvgScene.h
+@@ -72,6 +72,13 @@ struct SceneImpl : Scene
+
+     SceneImpl() : impl(Paint::Impl(this))
+     {
++        // Defensive: guarantee pImpl == &impl regardless of C++17 copy-elision.
++        // Without guaranteed elision the member initialiser creates a temporary;
++        // after the copy-to-impl the temporary is gone and pImpl is left null →
++        // crash at pImpl->refCnt (offset 0x6c) in Canvas::Impl::Impl() scene->ref().
++        if (pImpl != &impl) {
++            pImpl = &impl;
++            impl.paint = this;
++        }
+     }
+
+     ~SceneImpl()

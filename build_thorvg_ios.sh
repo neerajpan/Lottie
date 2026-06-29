@@ -112,6 +112,23 @@ cpu = '$CPU_FAMILY'
 endian = 'little'
 EOF
 
+    # Apply local patches to ThorVG source before building.
+    # We patch in-place rather than modifying the submodule so that the
+    # submodule stays pinned to its upstream commit and CI (git submodule
+    # update) continues to work without needing a forked remote.
+    PATCH_DIR="$SCRIPT_DIR/patches"
+    for patch in "$PATCH_DIR"/thorvg_*.patch; do
+        [ -f "$patch" ] || continue
+        echo "  Applying patch: $(basename "$patch")"
+        # -p1 strips the leading "a/" / "b/" prefix from unified-diff paths.
+        # --forward: silently skip already-applied patches (idempotent).
+        if ! git -C "$THORVG_DIR" apply --check --forward "$patch" 2>/dev/null; then
+            echo "  (patch already applied or conflicts — skipping)"
+        else
+            git -C "$THORVG_DIR" apply --forward "$patch"
+        fi
+    done
+
     # -Dthreads=true + -fvisibility=hidden: hidden visibility prevents macOS dyld
     # from interposing our ThorVG symbols with Godot's ThorVG (which is linked into
     # the editor/app binary). Without visibility=hidden, tvg::RenderMethod::ref()
