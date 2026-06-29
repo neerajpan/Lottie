@@ -725,9 +725,9 @@ LottieAnimation::~LottieAnimation() {
 void LottieAnimation::_initialize_thorvg() {
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
-        UtilityFunctions::print("[lottie] v0.10.0"
+        UtilityFunctions::print("[lottie] v0.11.0"
 #ifdef LOTTIE_IOS_BUILD
-            " ios=yes vis=hidden threads=true"
+            " ios=yes vis=hidden threads=true pimpl-fix"
 #else
             " ios=no"
 #endif
