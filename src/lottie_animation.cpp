@@ -725,9 +725,9 @@ LottieAnimation::~LottieAnimation() {
 void LottieAnimation::_initialize_thorvg() {
     static bool thorvg_initialized = false;
     if (!thorvg_initialized) {
-        UtilityFunctions::print("[lottie] v0.9.0"
+        UtilityFunctions::print("[lottie] v0.10.0"
 #ifdef LOTTIE_IOS_BUILD
-            " ios=yes partial=off"
+            " ios=yes vis=hidden threads=true"
 #else
             " ios=no"
 #endif
@@ -753,9 +753,8 @@ void LottieAnimation::_initialize_thorvg() {
     }
 
 #ifdef LOTTIE_IOS_BUILD
-    // iOS: defer SwCanvas::gen() to _ready(). Calling it in the constructor
-    // crashes on iOS ("My Mac" / Designed for iPad) with a mutex EINVAL —
-    // the runtime is not fully set up at that point.
+    // iOS: defer SwCanvas::gen() to _ready(). The constructor runs during
+    // GDExtension class registration before the scene tree is ready.
     UtilityFunctions::print("[diag] iOS: canvas deferred to _ready()");
 #else
     _create_thorvg_canvas();
@@ -765,10 +764,8 @@ void LottieAnimation::_initialize_thorvg() {
 void LottieAnimation::_create_thorvg_canvas() {
     if (canvas) return;
 
-#ifdef LOTTIE_IOS_BUILD
-    tvg::EngineOption render_opt = tvg::EngineOption::None;
-#else
     tvg::EngineOption render_opt = tvg::EngineOption::Default;
+#ifndef LOTTIE_IOS_BUILD
     if (engine_option == 1) render_opt = tvg::EngineOption::SmartRender;
 #endif
 

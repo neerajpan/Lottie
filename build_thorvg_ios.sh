@@ -100,8 +100,8 @@ strip = '$IOS_STRIP'
 pkg-config = 'false'
 
 [built-in options]
-c_args = ['-arch', '$ARCH', '-isysroot', '$SDK_PATH', '$MIN_FLAG=$MIN_IOS', '-fembed-bitcode']
-cpp_args = ['-arch', '$ARCH', '-isysroot', '$SDK_PATH', '$MIN_FLAG=$MIN_IOS', '-stdlib=libc++', '-fembed-bitcode']
+c_args = ['-arch', '$ARCH', '-isysroot', '$SDK_PATH', '$MIN_FLAG=$MIN_IOS', '-fembed-bitcode', '-fvisibility=hidden']
+cpp_args = ['-arch', '$ARCH', '-isysroot', '$SDK_PATH', '$MIN_FLAG=$MIN_IOS', '-stdlib=libc++', '-fembed-bitcode', '-fvisibility=hidden']
 c_link_args = ['-arch', '$ARCH', '-isysroot', '$SDK_PATH', '$MIN_FLAG=$MIN_IOS']
 cpp_link_args = ['-arch', '$ARCH', '-isysroot', '$SDK_PATH', '$MIN_FLAG=$MIN_IOS', '-stdlib=libc++']
 
@@ -112,15 +112,19 @@ cpu = '$CPU_FAMILY'
 endian = 'little'
 EOF
 
-    # -Dthreads=false: matches the Android approach -- ThorVG's threaded task
-    # scheduler can have lifecycle issues inside an embedded library on iOS.
-    # SIMD stays on, single-threaded raster is still plenty fast for Lottie.
+    # -Dthreads=true + -fvisibility=hidden: hidden visibility prevents macOS dyld
+    # from interposing our ThorVG symbols with Godot's ThorVG (which is linked into
+    # the editor/app binary). Without visibility=hidden, tvg::RenderMethod::ref()
+    # and tvg::engineInit from Godot's ThorVG (compiled WITH thread support) would
+    # be used for our objects whose Key struct has a different layout (no std::mutex),
+    # causing pthread_mutex_lock(invalid_addr) -> EINVAL -> std::system_error crash.
+    # threads=true keeps our Key layout matching Godot's as an additional safety net.
     (cd "$THORVG_DIR" && \
         $MESON setup "$BUILDDIR_NAME" \
             --cross-file "$CROSSFILE" \
             -Dbuildtype=release -Doptimization=3 -Db_ndebug=true \
             -Ddefault_library=static \
-            -Dsimd=true -Dthreads=false -Dpartial=false \
+            -Dsimd=true -Dthreads=true -Dpartial=false \
             -Dengines=sw -Dloaders=lottie -Dbindings=capi \
             -Dexamples=false -Dtests=false \
             --backend=ninja && \
