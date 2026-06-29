@@ -116,17 +116,12 @@ EOF
     # We patch in-place rather than modifying the submodule so that the
     # submodule stays pinned to its upstream commit and CI (git submodule
     # update) continues to work without needing a forked remote.
+    # -N / --forward: silently skip hunks that are already applied (idempotent).
     PATCH_DIR="$SCRIPT_DIR/patches"
-    for patch in "$PATCH_DIR"/thorvg_*.patch; do
-        [ -f "$patch" ] || continue
-        echo "  Applying patch: $(basename "$patch")"
-        # -p1 strips the leading "a/" / "b/" prefix from unified-diff paths.
-        # --forward: silently skip already-applied patches (idempotent).
-        if ! git -C "$THORVG_DIR" apply --check --forward "$patch" 2>/dev/null; then
-            echo "  (patch already applied or conflicts — skipping)"
-        else
-            git -C "$THORVG_DIR" apply --forward "$patch"
-        fi
+    for p in "$PATCH_DIR"/thorvg_*.patch; do
+        [ -f "$p" ] || continue
+        echo "  Applying patch: $(basename "$p")"
+        patch -p1 -N -d "$THORVG_DIR" < "$p" || true
     done
 
     # -Dthreads=true + -fvisibility=hidden: hidden visibility prevents macOS dyld
